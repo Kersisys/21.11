@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Puzzle</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; min-height: 100vh; font-family: 'Courier New', monospace; overflow: hidden; user-select: none; }
+  #bg { position: fixed; inset: 0; background: radial-gradient(ellipse 80% 60% at 20% 30%, rgba(30,15,60,0.8) 0%, transparent 60%), radial-gradient(ellipse 60% 80% at 80% 70%, rgba(10,30,50,0.7) 0%, transparent 60%), #0a0a0f; }
+  #grid-bg { position: fixed; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 40px 40px; }
+  #scene { position: relative; width: 100vw; height: 100vh; z-index: 1; }
+
+  #hint { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.25); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; z-index: 100; transition: opacity 0.5s; white-space: nowrap; }
+
+  #hint { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.25); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; z-index: 100; transition: opacity 0.5s; white-space: nowrap; }
+
+  #reset-btn { position: fixed; top: 28px; right: 32px; z-index: 200; background: transparent; border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.4); font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; padding: 8px 18px; cursor: pointer; transition: border-color 0.2s, color 0.2s, background 0.2s; border-radius: 2px; }
+  #reset-btn:hover { border-color: rgba(255,255,255,0.4); color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.04); }
+  #counter { position: fixed; top: 32px; left: 32px; z-index: 100; color: rgba(255,255,255,0.2); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; transition: color 0.3s; }
+
+  .piece { position: absolute; cursor: grab; will-change: transform; }
+  .piece:active { cursor: grabbing; }
+  .piece.snapped { cursor: default; pointer-events: none; }
+
+  @keyframes pulseOut { from { transform: scale(0.4); opacity: 1; } to { transform: scale(2.8); opacity: 0; } }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="grid-bg"></div>
+<div id="scene"></div>
+<div id="hint">перетащи кусочки · собери QR</div>
+<div id="counter">0 / 9</div>
+<button id="reset-btn">сброс</button>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+(function(){
+
+const scene    = document.getElementById('scene');
+const counter  = document.getElementById('counter');
+const hint     = document.getElementById('hint');
+const resetBtn = document.getElementById('reset-btn');
+
+const W = window.innerWidth, H = window.innerHeight;
+const CX = W / 2, CY = H / 2;
+
+const COLS = 3, ROWS = 3, TOTAL_PIECES = 9;
+const SNAP_DIST = 50, MAGNET_DIST = 130;
+const CUT_NOISE = 18, STEPS = 6, PAD = CUT_NOISE + 6;
+
+// ── QR helpers ────────────────────────────────────────────────────
+function generateQRData(url) {
+  const qr = qrcode(0, 'M');
+  qr.addData(url);
+  qr.make();
+  const n = qr.getModuleCount();
+  const data = [];
+  for (let r = 0; r < n; r++) {
+    const row = [];
+    for (let c = 0; c < n; c++) row.push(qr.isDark(r, c) ? 1 : 0);
+    data.push(row);
+  }
+  return data;
+}
+
+function pseudoRand(n) { n = Math.sin(n) * 43758.5453; return n - Math.floor(n); }
+
+function zigzag(ax, ay, bx, by, steps, seed) {
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    let x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+    if (i > 0 && i < steps) {
+      const rng = pseudoRand(seed + i * 137);
+      const len = Math.hypot(bx - ax, by - ay);
+      x += (-(by - ay) / len) * (rng - 0.5) * CUT_NOISE * 2;
+      y += (  (bx - ax) / len) * (rng - 0.5) * CUT_NOISE * 2;
+    }
+    pts.push([x, y]);
+  }
+  return pts;
+}
+
+// ── Per-game state (rebuilt on each URL change) ───────────────────
+let QR_DATA, N, CELL, QUIET, TOTAL, pieceW, pieceH, edges, fullQR;
+
+function initQR(url) {
+  QR_DATA = generateQRData(url);
+  N       = QR_DATA.length;
+  // pick CELL so TOTAL = N*CELL + QUIET*2 is divisible by 3
+  CELL  = 12;
+  // find QUIET: we want (N*CELL + 2*QUIET) % 3 == 0
+  // QUIET starts at 16 and we nudge
+  let base = N * CELL;
+  QUIET = 16;
+  while ((base + QUIET * 2) % 3 !== 0) QUIET++;
+  TOTAL  = base + QUIET * 2;
+  pieceW = TOTAL / COLS;
+  pieceH = TOTAL / ROWS;
+
+  // rebuild fullQR canvas
+  fullQR        = document.createElement('canvas');
+  fullQR.width  = TOTAL;
+  fullQR.height = TOTAL;
+  const ctx = fullQR.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, TOTAL, TOTAL);
+  ctx.fillStyle = '#000';
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (QR_DATA[r][c])
+        ctx.fillRect(QUIET + c * CELL, QUIET + r * CELL, CELL, CELL);
+
+  // rebuild cut edges
+  edges = {};
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      if (c < COLS - 1) edges[`v_${r}_${c}`] = zigzag(0, 0, 0, pieceH, STEPS, r * 13 + c * 7 + 1);
+      if (r < ROWS - 1) edges[`h_${r}_${c}`] = zigzag(0, 0, pieceW, 0, STEPS, r * 11 + c * 17 + 3);
+    }
+}
+
+function applyClipPath(ctx, row, col) {
+  const x0 = col * pieceW, y0 = row * pieceH;
+
+  const top = row === 0
+    ? [[x0, y0], [x0 + pieceW, y0]]
+    : edges[`h_${row-1}_${col}`].map(([px, py]) => [x0 + px, y0 + py]);
+
+  const right = col === COLS - 1
+    ? [[x0 + pieceW, y0], [x0 + pieceW, y0 + pieceH]]
+    : edges[`v_${row}_${col}`].map(([px, py]) => [x0 + pieceW + px, y0 + py]);
+
+  const bottom = row === ROWS - 1
+    ? [[x0 + pieceW, y0 + pieceH], [x0, y0 + pieceH]]
+    : [...edges[`h_${row}_${col}`]].reverse().map(([px, py]) => [x0 + px, y0 + pieceH + py]);
+
+  const left = col === 0
+    ? [[x0, y0 + pieceH], [x0, y0]]
+    : [...edges[`v_${row}_${col-1}`]].reverse().map(([px, py]) => [x0 + px, y0 + py]);
+
+  const all = [top[0], ...top.slice(1), ...right.slice(1), ...bottom.slice(1), ...left.slice(1)];
+  ctx.beginPath();
+  ctx.moveTo(all[0][0], all[0][1]);
+  for (let i = 1; i < all.length; i++) ctx.lineTo(all[i][0], all[i][1]);
+  ctx.closePath();
+}
+
+// ── Game state ────────────────────────────────────────────────────
+let pieces = [], dragging = null, ox = 0, oy = 0;
+let snappedCount = 0, gameOver = false, extraEls = [];
+
+function clearExtra() { extraEls.forEach(el => el.remove()); extraEls = []; }
+
+function scatter(cW, cH) {
+  return {
+    x:     CX - cW / 2 + (Math.random() - 0.5) * 620,
+    y:     CY - cH / 2 + (Math.random() - 0.5) * 320,
+    angle: (Math.random() - 0.5) * 30
+  };
+}
+
+function buildPieces() {
+  pieces.forEach(p => p.el.remove());
+  clearExtra();
+  pieces = []; snappedCount = 0; gameOver = false; dragging = null;
+  hint.style.opacity  = '1';
+  counter.textContent = `0 / ${TOTAL_PIECES}`;
+  counter.style.color = 'rgba(255,255,255,0.2)';
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cW = Math.round(pieceW + PAD * 2);
+      const cH = Math.round(pieceH + PAD * 2);
+
+      const pc = document.createElement('canvas');
+      pc.width = cW; pc.height = cH;
+      const pctx = pc.getContext('2d');
+
+      pctx.save();
+      pctx.translate(PAD - c * pieceW, PAD - r * pieceH);
+      applyClipPath(pctx, r, c);
+      pctx.clip();
+      pctx.drawImage(fullQR, 0, 0);
+      pctx.restore();
+
+      pctx.save();
+      pctx.translate(PAD - c * pieceW, PAD - r * pieceH);
+      applyClipPath(pctx, r, c);
+      pctx.strokeStyle = 'rgba(0,0,0,0.08)';
+      pctx.lineWidth = 1;
+      pctx.stroke();
+      pctx.restore();
+
+      const div = document.createElement('div');
+      div.className = 'piece';
+      div.style.width  = cW + 'px';
+      div.style.height = cH + 'px';
+      div.appendChild(pc);
+      scene.appendChild(div);
+
+      const targetX = Math.round(CX - TOTAL / 2 - PAD + c * pieceW);
+      const targetY = Math.round(CY - TOTAL / 2 - PAD + r * pieceH);
+      const { x, y, angle } = scatter(cW, cH);
+
+      div.style.left      = x + 'px';
+      div.style.top       = y + 'px';
+      div.style.transform = `rotate(${angle}deg)`;
+      div.style.filter    = 'drop-shadow(0 8px 28px rgba(0,0,0,0.75))';
+      div.style.zIndex    = 20 + r * COLS + c;
+
+      const piece = { el: div, row: r, col: c, x, y, targetX, targetY, snapped: false, angle, nearTarget: false };
+
+      div.addEventListener('mousedown', e => { startDrag(piece, e.clientX, e.clientY); e.preventDefault(); });
+      div.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; startDrag(piece, t.clientX, t.clientY); }, { passive: false });
+
+      pieces.push(piece);
+    }
+  }
+}
+
+function startDrag(p, cx, cy) {
+  if (p.snapped || gameOver) return;
+  dragging = p; ox = cx - p.x; oy = cy - p.y;
+  p.el.style.zIndex = 99;
+  p.el.style.filter = 'drop-shadow(0 18px 50px rgba(0,0,0,0.95))';
+}
+
+function movePiece(p, x, y) { p.x = x; p.y = y; p.el.style.left = x + 'px'; p.el.style.top = y + 'px'; }
+
+function checkMagnet(p) {
+  const pcx = p.x + p.el.offsetWidth  / 2, pcy = p.y + p.el.offsetHeight / 2;
+  const tcx = p.targetX + p.el.offsetWidth / 2, tcy = p.targetY + p.el.offsetHeight / 2;
+  const dx = tcx - pcx, dy = tcy - pcy, dist = Math.hypot(dx, dy);
+  p.nearTarget = dist < SNAP_DIST;
+  if (dist < MAGNET_DIST) {
+    const s = 1 - (dist - SNAP_DIST) / (MAGNET_DIST - SNAP_DIST);
+    movePiece(p, p.x + (dx / dist) * s * s * 7, p.y + (dy / dist) * s * s * 7);
+    p.angle += (0 - p.angle) * 0.12 * (1 - dist / MAGNET_DIST) * 3;
+    p.el.style.transform = `rotate(${p.angle}deg)`;
+    p.el.style.filter = dist < SNAP_DIST
+      ? 'drop-shadow(0 0 14px rgba(140,210,255,0.7)) drop-shadow(0 18px 50px rgba(0,0,0,0.95))'
+      : 'drop-shadow(0 18px 50px rgba(0,0,0,0.95))';
+  } else {
+    p.nearTarget = false;
+    p.el.style.filter = 'drop-shadow(0 18px 50px rgba(0,0,0,0.95))';
+  }
+}
+
+function snapPiece(p) {
+  if (p.snapped) return;
+  p.snapped = true; p.angle = 0;
+  p.el.classList.add('snapped');
+  p.el.style.transform = 'none';
+  p.el.style.transition = 'left .2s cubic-bezier(.2,.8,0,1.1), top .2s cubic-bezier(.2,.8,0,1.1)';
+  movePiece(p, p.targetX, p.targetY);
+  setTimeout(() => { p.el.style.filter = 'drop-shadow(0 2px 6px rgba(0,0,0,0.35))'; p.el.style.zIndex = 10; p.el.style.transition = ''; }, 230);
+
+  const pulse = document.createElement('div');
+  pulse.style.cssText = `position:absolute;left:${p.targetX+p.el.offsetWidth/2-34}px;top:${p.targetY+p.el.offsetHeight/2-34}px;width:68px;height:68px;border-radius:50%;border:1.5px solid rgba(140,210,255,0.55);pointer-events:none;z-index:5;animation:pulseOut 0.45s ease-out forwards;`;
+  scene.appendChild(pulse);
+  setTimeout(() => pulse.remove(), 500);
+
+  snappedCount++;
+  counter.textContent = `${snappedCount} / ${TOTAL_PIECES}`;
+  if (snappedCount === TOTAL_PIECES) onAllSnapped();
+}
+
+function onAllSnapped() {
+  if (gameOver) return;
+  gameOver = true;
+  hint.style.opacity = '0';
+  counter.style.color = 'rgba(255,255,255,0.5)';
+  setTimeout(() => {
+    pieces.forEach(p => { p.el.style.transition = 'opacity 0.5s'; p.el.style.opacity = '0'; });
+    setTimeout(() => {
+      pieces.forEach(p => p.el.remove());
+
+      const sc = document.createElement('canvas');
+      sc.width = TOTAL; sc.height = TOTAL;
+      const ctx = sc.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, TOTAL, TOTAL);
+      ctx.fillStyle = '#000';
+      for (let r = 0; r < N; r++)
+        for (let c = 0; c < N; c++)
+          if (QR_DATA[r][c]) ctx.fillRect(QUIET + c * CELL, QUIET + r * CELL, CELL, CELL);
+
+      sc.style.cssText = `position:absolute;width:${TOTAL}px;height:${TOTAL}px;left:${CX-TOTAL/2}px;top:${CY-TOTAL/2}px;border-radius:3px;image-rendering:pixelated;opacity:0;transition:opacity 0.7s,box-shadow 1s;z-index:20;`;
+      scene.appendChild(sc); extraEls.push(sc);
+
+      const label = document.createElement('div');
+      label.style.cssText = `position:absolute;left:${CX-TOTAL/2}px;top:${CY-TOTAL/2-80}px;width:${TOTAL}px;text-align:center;font-family:'Courier New',monospace;pointer-events:none;opacity:0;transition:opacity 0.8s;z-index:21;`;
+      label.innerHTML = `<p style="color:rgba(255,255,255,0.38);font-size:10px;letter-spacing:5px;text-transform:uppercase;margin-bottom:8px;">собрано</p><h2 style="color:rgba(255,255,255,0.82);font-size:17px;letter-spacing:7px;font-weight:400;text-transform:uppercase;">сканируй меня</h2>`;
+      scene.appendChild(label); extraEls.push(label);
+
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        sc.style.opacity = '1';
+        sc.style.boxShadow = '0 0 50px rgba(255,255,255,0.14),0 0 100px rgba(100,180,255,0.07)';
+        label.style.opacity = '1';
+      }));
+    }, 600);
+  }, 350);
+}
+
+// ── Pointer events ────────────────────────────────────────────────
+document.addEventListener('mousemove', e => { if (!dragging) return; movePiece(dragging, e.clientX - ox, e.clientY - oy); checkMagnet(dragging); });
+document.addEventListener('touchmove', e => { if (!dragging) return; e.preventDefault(); const t = e.touches[0]; movePiece(dragging, t.clientX - ox, t.clientY - oy); checkMagnet(dragging); }, { passive: false });
+
+function releaseDrag() {
+  if (!dragging) return;
+  const p = dragging; dragging = null;
+  if (p.nearTarget) snapPiece(p);
+  else { p.el.style.zIndex = 20; p.el.style.filter = 'drop-shadow(0 8px 28px rgba(0,0,0,0.75))'; }
+}
+document.addEventListener('mouseup',  releaseDrag);
+document.addEventListener('touchend', releaseDrag);
+
+// ── Reset ─────────────────────────────────────────────────────────
+resetBtn.addEventListener('click', () => { dragging = null; buildPieces(); });
+
+// ── Init ──────────────────────────────────────────────────────────
+// 👇 Меняй ссылку здесь
+const URL_TO_ENCODE = 'https://youtube.com';
+
+initQR(URL_TO_ENCODE);
+buildPieces();
+
+})();
+</script>
+</body>
+</html>
