@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Доступ получен</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    background: #0a0a0f; 
+    min-height: 100vh; 
+    font-family: 'Courier New', monospace; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  
+  #bg { 
+    position: fixed; 
+    inset: 0; 
+    background: radial-gradient(ellipse 80% 60% at 20% 30%, rgba(30,15,60,0.8) 0%, transparent 60%), radial-gradient(ellipse 60% 80% at 80% 70%, rgba(10,30,50,0.7) 0%, transparent 60%), #0a0a0f; 
+    z-index: 0;
+  }
+
+  #grid-bg { 
+    position: fixed; 
+    inset: 0; 
+    background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); 
+    background-size: 40px 40px;
+    z-index: 0;
+  }
+
+  #content { 
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    max-width: 600px;
+    padding: 40px;
+  }
+
+  #back-btn { 
+    position: fixed; 
+    top: 32px; 
+    left: 32px; 
+    z-index: 100;
+    background: transparent; 
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.4);
+    font-family: 'Courier New', monospace; 
+    font-size: 11px; 
+    letter-spacing: 3px; 
+    text-transform: uppercase; 
+    padding: 8px 18px; 
+    cursor: pointer; 
+    transition: border-color 0.2s, color 0.2s, background 0.2s; 
+    border-radius: 2px;
+  }
+  #back-btn:hover { 
+    border-color: rgba(255,255,255,0.4); 
+    color: rgba(255,255,255,0.8); 
+    background: rgba(255,255,255,0.04);
+  }
+
+  .label { 
+    color: rgba(255,255,255,0.35);
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: block;
+    animation: fadeIn 0.6s ease-out;
+  }
+
+  .title { 
+    color: rgba(255,255,255,0.85);
+    font-size: 32px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    font-weight: 400;
+    animation: slideUp 0.8s ease-out;
+  }
+
+  .message { 
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+    line-height: 1.8;
+    margin-bottom: 40px;
+    animation: fadeIn 0.8s ease-out 0.2s backwards;
+  }
+
+  .divider { 
+    width: 60px; 
+    height: 1px; 
+    background: rgba(255,255,255,0.1); 
+    margin: 32px auto;
+    animation: slideIn 0.8s ease-out 0.4s backwards;
+  }
+
+  .info-box { 
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.02);
+    padding: 24px;
+    border-radius: 4px;
+    margin-bottom: 24px;
+    animation: fadeIn 0.8s ease-out 0.6s backwards;
+  }
+
+  .info-label { 
+    color: rgba(255,255,255,0.3);
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  img {
+    opacity: 0.05
+  }
+
+  .info-text { 
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+    word-break: break-all;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { 
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideIn {
+    from { 
+      opacity: 0;
+      transform: scaleX(0);
+    }
+    to { 
+      opacity: 1;
+      transform: scaleX(1);
+    }
+  }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="grid-bg"></div>
+
+<button id="back-btn" onclick="window.location.href='index.html'">назад</button>
+
+<div id="content">
+  <span class="label">статус</span>
+  <h1 class="title">доступ получен</h1>
+  <p class="message">Молодец, продолжай вслушиваться в шёпот, иногда он может дать больше чем молчание.</p>
+  
+  <div class="divider"></div>
+  
+  <!-- <div class="info-box">
+    <span class="info-label">Твой код</span>
+    <div class="info-text">secret123</div>
+  </div> -->
+
+  <p style="color: rgba(255,255,255,0.3); font-size: 12px; letter-spacing: 2px;">
+    <p style="color: rgba(255,255,255,0.3); font-size: 12px; letter-spacing: 2px;">
+      <a href="radio.html" style="display: inline-block; outline: none;">
+        <img 
+          src="img/shopot.png" 
+          id="shopot-img"
+          style="opacity: 0.05; transition: opacity 0.3s ease;"
+          onmouseover="this.style.opacity='0.07'" 
+          onmouseout="this.style.opacity='0.03'"
+        >
+      </a>
+    </p>
+  </p>
+</div>
+
+<script>
+  // Опционально: проверка, пришел ли пользователь с правильного кода
+  // Можно использовать URL параметры или localStorage
+</script>
+</body>
+</html>

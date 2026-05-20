@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radio Frequency - Signal Finder</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #0a0a0a;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* VHS эффект */
+  @keyframes vhs-flicker {
+    0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+    20%, 24%, 55% { opacity: 0.95; }
+  }
+
+  @keyframes vhs-shift {
+    0% { transform: translateX(0); }
+    20% { transform: translateX(1px); }
+    40% { transform: translateX(-1px); }
+    100% { transform: translateX(0); }
+  }
+
+  #vhs-overlay {
+    position: fixed;
+    inset: 0;
+    background: 
+      repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.12),
+        rgba(0, 0, 0, 0.12) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+    animation: vhs-flicker 0.15s infinite, vhs-shift 0.3s infinite;
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* INTRO СЦЕНА - Стол с приёмником */
+  #scene {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse 100% 80% at 50% 40%, rgba(30, 20, 40, 0.4) 0%, #0a0a0a 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  #scene.hidden {
+    display: none;
+  }
+
+  /* Деревянный стол */
+  #table {
+    position: relative;
+    width: 1000px;
+    height: 700px;
+    background: linear-gradient(135deg, #4a3a2a 0%, #3a2a1a 50%, #2a1a0a 100%);
+    border-radius: 40px;
+    box-shadow: 
+      0 60px 120px rgba(0, 0, 0, 0.9),
+      inset 0 1px 20px rgba(255, 255, 255, 0.08),
+      inset 0 0 80px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+  }
+
+  #table::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: 
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 80px,
+        rgba(0, 0, 0, 0.1) 80px,
+        rgba(0, 0, 0, 0.1) 85px
+      );
+    border-radius: 40px;
+  }
+
+  /* Свет на столе */
+  #table-light {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(200, 150, 80, 0.15) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    animation: light-pulse 3s ease-in-out infinite;
+    box-shadow: 0 0 80px rgba(200, 150, 80, 0.1);
+  }
+
+  @keyframes light-pulse {
+    0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.9); }
+    50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.1); }
+  }
+
+  /* Радиоприёмник на столе */
+  #radio-intro {
+    position: absolute;
+    width: 320px;
+    height: 200px;
+    background: linear-gradient(135deg, #5a4a3a, #3a2a1a);
+    border: 4px solid #2a1a0a;
+    border-radius: 25px;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 
+      0 40px 80px rgba(0, 0, 0, 0.8),
+      inset 0 1px 10px rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.3s;
+    z-index: 20;
+  }
+
+  #radio-intro:hover {
+    transform: translateX(-50%) scale(1.05);
+    box-shadow: 
+      0 40px 100px rgba(0, 0, 0, 0.9),
+      inset 0 1px 10px rgba(255, 255, 255, 0.15),
+      0 0 40px rgba(255, 200, 100, 0.2);
+  }
+
+  #radio-intro:active {
+    transform: translateX(-50%) scale(0.98);
+  }
+
+  /* Экран радио */
+  .radio-screen {
+    position: absolute;
+    width: 180px;
+    height: 80px;
+    top: 30px;
+    left: 20px;
+    background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+    border: 2px solid #2a2a2a;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .radio-freq {
+    color: #00ff00;
+    font-size: 24px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+  }
+
+  /* Крутилка на столе */
+  .radio-knob-intro {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    bottom: 30px;
+    right: 30px;
+    background: radial-gradient(circle at 35% 35%, #6a6a6a, #2a2a2a);
+    border-radius: 50%;
+    box-shadow: 
+      0 8px 20px rgba(0, 0, 0, 0.6),
+      inset 0 2px 5px rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .radio-knob-intro::before {
+    content: '';
+    position: absolute;
+    width: 3px;
+    height: 25px;
+    background: linear-gradient(180deg, #ff8844 0%, #ffaa44 100%);
+    top: 10px;
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(255, 136, 68, 0.6);
+  }
+
+  .radio-knob-intro::after {
+    content: '';
+    position: absolute;
+    width: 25px;
+    height: 25px;
+    background: radial-gradient(circle at 30% 30%, #7a7a7a, #1a1a1a);
+    border-radius: 50%;
+    box-shadow: 
+      inset 0 1px 3px rgba(255, 255, 255, 0.1),
+      inset 0 -1px 3px rgba(0, 0, 0, 0.8);
+  }
+
+  /* Текст "Нажми" */
+  #hint-text {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.25);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    animation: hint-blink 2s ease-in-out infinite;
+  }
+
+  @keyframes hint-blink {
+    0%, 50%, 100% { opacity: 0.25; }
+    75% { opacity: 0.6; }
+  }
+
+  /* ИГРА */
+  #game-container {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.6s ease-out;
+  }
+
+  #game-container.active {
+    display: flex;
+    opacity: 1;
+  }
+
+  #radio-box {
+    position: relative;
+    width: 650px;
+    background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
+    border: 3px solid #4a4a4a;
+    border-radius: 15px;
+    padding: 50px 40px;
+    box-shadow: 
+      0 20px 60px rgba(0, 0, 0, 0.95),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .radio-label {
+    color: rgba(0, 255, 0, 0.4);
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  #frequency-display {
+    background: linear-gradient(180deg, #111 0%, #0a0a0a 100%);
+    border: 2px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 25px;
+    margin-bottom: 30px;
+    text-align: center;
+  }
+
+  .signal-meter {
+    width: 100%;
+    height: 60px;
+    background: #0a0a0a;
+    border: 2px solid #2a2a2a;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    padding: 8px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 5px;
+    overflow: hidden;
+  }
+
+  .bar {
+    width: 6px;
+    background: linear-gradient(180deg, #0f0 0%, #0a0 50%, #060 100%);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+    transition: height 0.1s;
+    min-height: 4px;
+  }
+
+  .freq-number {
+    color: #00ff00;
+    font-size: 54px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+    margin-bottom: 5px;
+  }
+
+  .freq-unit {
+    color: rgba(0, 255, 0, 0.5);
+    font-size: 12px;
+  }
+
+  #wave-container {
+    text-align: center;
+    margin: 30px 0;
+  }
+
+  #wave-gauge {
+    width: 220px;
+    height: 220px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  #wave-canvas {
+    display: block;
+    filter: drop-shadow(0 0 15px rgba(0, 255, 0, 0.2));
+  }
+
+  .knob-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    margin: 30px auto;
+  }
+
+  #knob {
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 35% 35%, #5a5a5a, #1a1a1a);
+    border-radius: 50%;
+    cursor: grab;
+    box-shadow: 
+      0 10px 30px rgba(0, 0, 0, 0.8),
+      inset 0 3px 8px rgba(255, 255, 255, 0.15),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: filter 0.1s;
+    user-select: none;
+  }
+
+  #knob:active {
+    cursor: grabbing;
+    filter: brightness(1.1);
+  }
+
+  .knob-indicator {
+    position: absolute;
+    width: 5px;
+    height: 55px;
+    background: linear-gradient(180deg, #ff6b35 0%, #ffaa00 100%);
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 3px;
+    box-shadow: 0 0 12px rgba(255, 107, 53, 0.7);
+  }
+
+  .knob-center {
+    width: 45px;
+    height: 45px;
+    background: radial-gradient(circle at 30% 30%, #6a6a6a, #1a1a1a);
+    border-radius: 50%;
+    box-shadow: 
+      inset 0 3px 8px rgba(255, 255, 255, 0.15),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.8);
+  }
+
+  #game-status {
+    position: absolute;
+    bottom: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(0, 255, 0, 0.7);
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-align: center;
+    width: 100%;
+  }
+
+  .status-found {
+    color: #00ff00;
+    animation: status-pulse 0.4s ease-out;
+  }
+
+  @keyframes status-pulse {
+    0% { transform: translateX(-50%) scale(0.8); opacity: 0.5; }
+    50% { transform: translateX(-50%) scale(1.1); }
+    100% { transform: translateX(-50%) scale(1); opacity: 1; }
+  }
+
+  /* РЕЗУЛЬТАТ */
+  #result-screen {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(0, 50, 0, 0.2) 0%, #000 100%);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.8s ease-out;
+    backdrop-filter: blur(3px);
+  }
+
+  #result-screen.active {
+    display: flex;
+    opacity: 1;
+  }
+
+  #result-content {
+    text-align: center;
+    max-width: 600px;
+    animation: result-appear 0.6s ease-out;
+  }
+
+  @keyframes result-appear {
+    0% { opacity: 0; transform: translateY(-20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-label {
+    color: rgba(0, 255, 0, 0.4);
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 15px;
+  }
+
+  .result-title {
+    color: #00ff00;
+    font-size: 38px;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    text-shadow: 0 0 30px rgba(0, 255, 0, 0.4);
+  }
+
+  .result-message {
+    color: rgba(0, 255, 0, 0.5);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 30px;
+  }
+
+  .result-link {
+    background: rgba(0, 255, 0, 0.08);
+    border: 2px solid rgba(0, 255, 0, 0.5);
+    border-radius: 6px;
+    padding: 15px 20px;
+    color: #00ff00;
+    font-size: 12px;
+    word-break: break-all;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.1);
+    margin-top: 20px;
+  }
+
+  .result-link:hover {
+    background: rgba(0, 255, 0, 0.15);
+    border-color: #00ff00;
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+    transform: scale(1.02);
+  }
+</style>
+</head>
+<body>
+
+<div id="vhs-overlay"></div>
+
+<!-- INTRO СЦЕНА со столом -->
+<div id="scene">
+  <div id="table">
+    <div id="table-light"></div>
+    
+    <div id="radio-intro">
+      <div class="radio-screen">
+        <span class="radio-freq">1121.0</span>
+      </div>
+      <div class="radio-knob-intro"></div>
+    </div>
+  </div>
+  <div id="hint-text">нажми на приёмник</div>
+</div>
+
+<!-- ИГРА -->
+<div id="game-container">
+  <div id="radio-box">
+    <label class="radio-label">Поиск сигналов</label>
+    
+    <div id="frequency-display">
+      <div class="signal-meter" id="signal-bars"></div>
+      <div class="freq-number" id="freq-number">88.0</div>
+      <div class="freq-unit">FM</div>
+    </div>
+
+    <label class="radio-label">Мощность</label>
+    <div id="wave-container">
+      <div id="wave-gauge">
+        <canvas id="wave-canvas" width="220" height="220"></canvas>
+      </div>
+    </div>
+
+    <label class="radio-label">🎚️ Тумблер</label>
+    <div class="knob-container">
+      <div id="knob">
+        <div class="knob-indicator"></div>
+        <div class="knob-center"></div>
+      </div>
+    </div>
+
+    <div id="game-status">🔍 Найдено сигналов 1 / ?</div>
+  </div>
+</div>
+
+<!-- РЕЗУЛЬТАТ -->
+<div id="result-screen">
+  <div id="result-content">
+    <span class="result-label">✓ Ты услышала шёпот...</span>
+    <div class="result-title">Сигналы были найдены</div>
+    <p class="result-message">
+      Ты нашел того кто шлёт сигналы, осталось только...
+    </p>
+    <div class="result-link" id="result-link">Идти дальше...</div>
+  </div>
+</div>
+
+<script>
+  let audioContext = null;
+  let whiteNoiseNode = null;
+  let gainNode = null;
+  let isAudioStarted = false;
+
+  function initAudio() {
+    if (isAudioStarted) return;
+    
+    try {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Генерируем белый шум прямо в коде
+      const bufferSize = audioContext.sampleRate * 2;
+      const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      
+      whiteNoiseNode = audioContext.createBufferSource();
+      whiteNoiseNode.buffer = noiseBuffer;
+      whiteNoiseNode.loop = true;
+      
+      gainNode = audioContext.createGain();
+      gainNode.gain.value = 0;
+      
+      whiteNoiseNode.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      whiteNoiseNode.start(0);
+      
+      isAudioStarted = true;
+    } catch (e) {
+      console.log('Ошибка инициализации звука:', e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 👇 КОЛИЧЕСТВО СИГНАЛОВ ДЛЯ ПОИСКА
+  // ═══════════════════════════════════════════════════════════════
+  const SIGNALS_TO_FIND = 4;
+  // ═══════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════
+  // 👇 ГРОМКОСТЬ БЕЛОГО ШУМА (0.1 = тихо, 0.5 = громко)
+  // ═══════════════════════════════════════════════════════════════
+  const WHITE_NOISE_VOLUME = 0.05;
+  // ═══════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════
+  // GAME STATE
+  // ═══════════════════════════════════════════════════════════════
+  
+  const gameState = {
+    freq: 88.0,
+    signals: [95.5, 105.7],
+    foundSignals: [],
+    gameActive: false
+  };
+
+  const DOM = {
+    scene: document.getElementById('scene'),
+    radioIntro: document.getElementById('radio-intro'),
+    gameContainer: document.getElementById('game-container'),
+    knob: document.getElementById('knob'),
+    freqNumber: document.getElementById('freq-number'),
+    signalBars: document.getElementById('signal-bars'),
+    waveCanvas: document.getElementById('wave-canvas'),
+    gameStatus: document.getElementById('game-status'),
+    resultScreen: document.getElementById('result-screen'),
+    resultLink: document.getElementById('result-link'),
+    vhsOverlay: document.getElementById('vhs-overlay')
+  };
+
+  let knobRotation = 0;
+  let isDragging = false;
+  let dragStartY = 0;
+
+  // ═══════════════════════════════════════════════════════════════
+  // НАЖМИ НА ПРИЁМНИК
+  // ═══════════════════════════════════════════════════════════════
+
+  DOM.radioIntro.addEventListener('click', async () => {
+    await initAudio();
+    startGame();
+  });
+
+  function startGame() {
+    gameState.gameActive = true;
+    gameState.foundSignals = [];
+    
+    // Генерируем нужное количество сигналов на случайных частотах
+    gameState.signals = [];
+    for (let i = 0; i < SIGNALS_TO_FIND; i++) {
+      let newSignal = 88 + Math.random() * 24;
+      
+      // Убеждаемся, что новый сигнал далеко от остальных
+      let isFarEnough = true;
+      for (let existing of gameState.signals) {
+        if (Math.abs(newSignal - existing) < 5) {
+          isFarEnough = false;
+          break;
+        }
+      }
+      
+      // Если слишком близко к существующим, генерируем новый
+      while (!isFarEnough) {
+        newSignal = 88 + Math.random() * 24;
+        isFarEnough = true;
+        for (let existing of gameState.signals) {
+          if (Math.abs(newSignal - existing) < 5) {
+            isFarEnough = false;
+            break;
+          }
+        }
+      }
+      
+      gameState.signals.push(newSignal);
+    }
+    
+    DOM.scene.classList.add('hidden');
+    DOM.gameContainer.classList.add('active');
+    
+    gameLoop();
+  }
+
+  function gameLoop() {
+    if (!gameState.gameActive) return;
+
+    DOM.freqNumber.textContent = gameState.freq.toFixed(1);
+
+    const signalStrength = calculateSignalStrength();
+
+    updateSignalBars(signalStrength);
+    drawWaveGauge(signalStrength);
+
+    // 👇 ГРОМКОСТЬ БЕЛОГО ШУМА - чем ближе к сигналу, тем громче
+    if (gainNode && audioContext) {
+      gainNode.gain.value = Math.pow(signalStrength, 0.6) * WHITE_NOISE_VOLUME;
+    }
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  function calculateSignalStrength() {
+    let strength = 0;
+    
+    gameState.signals.forEach(signal => {
+      const distance = Math.abs(gameState.freq - signal);
+      
+      if (distance < 3) {
+        const value = 1 - (distance / 3);
+        strength = Math.max(strength, value * value);
+      }
+    });
+
+    return Math.min(strength, 1);
+  }
+
+  function updateSignalBars(strength) {
+    DOM.signalBars.innerHTML = '';
+    const barCount = 24;
+    
+    for (let i = 0; i < barCount; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      
+      const threshold = 1 - (i / barCount);
+      let height = strength > threshold ? 100 * (strength - threshold) / (1 - threshold) : 4;
+      
+      bar.style.height = height + '%';
+      DOM.signalBars.appendChild(bar);
+    }
+  }
+
+  function drawWaveGauge(strength) {
+    const canvas = DOM.waveCanvas;
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const baseRadius = 70;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const waveCount = 5;
+    for (let i = 0; i < waveCount; i++) {
+      const waveRadius = baseRadius * (i + 1) / waveCount;
+      const maxAmplitude = 25;
+      const waveAmplitude = strength * maxAmplitude;
+      
+      const opacity = Math.max(0.1, 0.4 - i * 0.08);
+      ctx.strokeStyle = `rgba(0, 255, 0, ${opacity})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+
+      for (let angle = 0; angle < Math.PI * 2; angle += 0.05) {
+        const waveHeight = Math.sin(angle * 4) * waveAmplitude;
+        const distance = waveRadius + waveHeight;
+        const x = centerX + Math.cos(angle) * distance;
+        const y = centerY + Math.sin(angle) * distance;
+        
+        if (angle === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#00ff00';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function checkSignalDetection() {
+    for (let idx = 0; idx < gameState.signals.length; idx++) {
+      // Пропускаем если этот сигнал уже найден
+      if (gameState.foundSignals.includes(idx)) continue;
+
+      const signal = gameState.signals[idx];
+      const distance = Math.abs(gameState.freq - signal);
+      
+      if (distance < 0.5) {
+        gameState.foundSignals.push(idx);
+        const foundCount = gameState.foundSignals.length;
+        
+        // Если это не последний сигнал, регенерируем его
+        if (foundCount < SIGNALS_TO_FIND) {
+          // Находим свободный индекс для регенерации
+          let newSignal = 88 + Math.random() * 24;
+          
+          // Убеждаемся, что новый сигнал далеко от остальных
+          let isFarEnough = false;
+          while (!isFarEnough) {
+            isFarEnough = true;
+            for (let i = 0; i < gameState.signals.length; i++) {
+              if (i !== idx && Math.abs(newSignal - gameState.signals[i]) < 5) {
+                isFarEnough = false;
+                break;
+              }
+            }
+            if (!isFarEnough) {
+              newSignal = 88 + Math.random() * 24;
+            }
+          }
+          
+          gameState.signals[idx] = newSignal;
+        }
+        
+        onSignalFound(foundCount);
+        
+        // Если нашли все сигналы, заканчиваем игру
+        if (foundCount === SIGNALS_TO_FIND) {
+          endGame();
+        }
+      }
+    }
+  }
+
+  function onSignalFound(count) {
+    // ${SIGNALS_TO_FIND}
+    DOM.gameStatus.textContent = `✓ Signal ${count} / ? Found`;
+    DOM.gameStatus.classList.add('status-found');
+    setTimeout(() => DOM.gameStatus.classList.remove('status-found'), 400);
+  }
+
+  function endGame() {
+    gameState.gameActive = false;
+    
+    if (whiteNoiseNode) {
+      try {
+        whiteNoiseNode.stop();
+      } catch (e) {}
+    }
+    
+    setTimeout(() => {
+      DOM.gameContainer.classList.remove('active');
+      DOM.resultScreen.classList.add('active');
+    }, 600);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // KNOB CONTROL
+  // ═══════════════════════════════════════════════════════════════
+
+  function onKnobStart(clientY) {
+    if (!gameState.gameActive) return;
+    isDragging = true;
+    dragStartY = clientY;
+  }
+
+  function onKnobMove(clientY) {
+    if (!isDragging || !gameState.gameActive) return;
+
+    const deltaY = dragStartY - clientY;
+    knobRotation += deltaY * 0.2;
+    dragStartY = clientY;
+
+    gameState.freq = 88 + ((knobRotation % 360 + 360) % 360 / 360) * 24;
+
+    DOM.knob.style.transform = `rotate(${knobRotation}deg)`;
+  }
+
+  function onKnobEnd() {
+    isDragging = false;
+    // Проверяем сигнал только при отпускании мышки
+    checkSignalDetection();
+  }
+
+  DOM.knob.addEventListener('mousedown', (e) => onKnobStart(e.clientY));
+  document.addEventListener('mousemove', (e) => onKnobMove(e.clientY));
+  document.addEventListener('mouseup', onKnobEnd);
+
+  DOM.knob.addEventListener('touchstart', (e) => onKnobStart(e.touches[0].clientY), { passive: true });
+  document.addEventListener('touchmove', (e) => onKnobMove(e.touches[0].clientY), { passive: true });
+  document.addEventListener('touchend', onKnobEnd);
+
+  // ═══════════════════════════════════════════════════════════════
+  // РЕЗУЛЬТАТ
+  // ═══════════════════════════════════════════════════════════════
+
+  DOM.resultLink.addEventListener('click', () => {
+    // 👇 МЕНЯЙ ССЫЛКУ ЗДЕСЬ
+    window.location.href = 'message.html';
+  });
+</script>
+
+</body>
+</html>
