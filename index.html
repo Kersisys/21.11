@@ -480,7 +480,7 @@ function onAllSnapped() {
 
       const label = document.createElement('div');
       label.style.cssText = `position:absolute;left:${CX-TOTAL/2}px;top:${CY-TOTAL/2-80}px;width:${TOTAL}px;text-align:center;font-family:'Courier New',monospace;pointer-events:none;opacity:0;transition:opacity 0.8s;z-index:21;`;
-      label.innerHTML = `<p style="color:rgba(255,255,255,0.38);font-size:10px;letter-spacing:5px;text-transform:uppercase;margin-bottom:8px;">пазл собран</p><h2 style="color:rgba(255,255,255,0.82);font-size:17px;letter-spacing:7px;font-weight:400;text-transform:uppercase;">сканируй меня</h2>`;
+      label.innerHTML = `<p style="color:rgba(255,255,255,0.38);font-size:20px;letter-spacing:5px;text-transform:uppercase;margin-bottom:8px;">Пазл собран</p><h2 style="color:rgba(255,255,255,0.82);font-size:27px;letter-spacing:7px;font-weight:400;text-transform:uppercase;">сканируй меня</h2>`;
       scene.appendChild(label); extraEls.push(label);
 
       requestAnimationFrame(() => requestAnimationFrame(() => {
